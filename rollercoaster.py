@@ -13,17 +13,17 @@ SECOND_SPIRAL_HEIGHT = 7
 EXIT_RISE = 2.0
 ENTRY_LENGTH = 10
 
-def plot_rollercoaster(x, y, z, title="Perfectly Smooth Dual Corkscrew Rollercoaster (Connectable)"):
+def plot_rollercoaster(x, y, z, title="DinoCoaster"):
     """Plot a rollercoaster given x, y, z coordinates"""
     fig = plt.figure(figsize=(10, 6))
     ax = fig.add_subplot(111, projection='3d')
     
     # Plot the rollercoaster track
-    ax.plot(x, y, z, color='deepskyblue', linewidth=3)
+    ax.plot(x, y, z, color='forestgreen', linewidth=3)
     
     # Add markers for start and end
-    ax.scatter(x[0], y[0], z[0], color='green', s=50, label='Start')
-    ax.scatter(x[-1], y[-1], z[-1], color='red', s=50, label='End')
+    # ax.scatter(x[0], y[0], z[0], color='green', s=50, label='Start')
+    # ax.scatter(x[-1], y[-1], z[-1], color='red', s=50, label='End')
     
     # Add directional indicators to show entry and exit directions
     # Add arrows at entry and exit to show direction
@@ -45,14 +45,14 @@ def plot_rollercoaster(x, y, z, title="Perfectly Smooth Dual Corkscrew Rollercoa
               color='red', linewidth=2, arrow_length_ratio=0.2)
     
     # Add text labels
-    ax.text(x[0], y[0]-1, z[0], "Entry (Y+)", color='green', fontsize=9)
-    ax.text(x[-1], y[-1]-1, z[-1], "Exit (Y-)", color='red', fontsize=9)
+    # ax.text(x[0], y[0]-1, z[0], "Entry (Y+)", color='green', fontsize=9)
+    # ax.text(x[-1], y[-1]-1, z[-1], "Exit (Y-)", color='red', fontsize=9)
     
     # Set axis labels and title
     ax.set_xlabel("X (width)")
     ax.set_ylabel("Y (track direction)")
     ax.set_zlabel("Z (height)")
-    ax.set_title(title)
+    ax.set_title(title, pad=20)
     
     # Set view angle
     ax.view_init(elev=30, azim=-60)
@@ -78,6 +78,11 @@ def plot_rollercoaster(x, y, z, title="Perfectly Smooth Dual Corkscrew Rollercoa
         z_range / max_range
     ])
     
+    # Add pillars
+    pillar_positions = calculate_pillar_positions(x, y, z)
+    for px, py, pz_base, pz_top in pillar_positions:
+        ax.plot([px, px], [py, py], [pz_base, pz_top], color='gray', linewidth=1.5)
+
     ax.legend()
     plt.tight_layout()
     return fig, ax
@@ -1454,38 +1459,40 @@ def smooth_sharp_points(x, y, z, problem_indices, window_size=10):
     
     return x_new, y_new, z_new
 
-def dilate_rollercoaster(x, y, z, scale_factor=4.0, z_translation=115.0):
+def dilate_rollercoaster(x, y, z, scale_factor=3.0, z_translation=None):
     """
     Dilates the entire rollercoaster by the specified scale factor in all directions
-    and translates it vertically to ensure it's above ground level.
+    and translates it vertically so that the lowest point is 5 meters above ground level.
     
     Parameters:
     - x, y, z: Track coordinates
-    - scale_factor: Amount to scale the rollercoaster (default: 4.0)
-    - z_translation: Additional z-axis translation to raise the track (default: 115.0)
+    - scale_factor: Amount to scale the rollercoaster (default: 3.0)
+    - z_translation: Optional z-translation (if None, auto-adjust to lift base to 5m)
     
     Returns:
     - Dilated and translated x, y, z coordinates
     """
     import numpy as np
-    
-    # Calculate the center of the rollercoaster in the xy-plane
-    # (we won't center vertically since we want to lift it)
+
+    # Calculate the center in XY
     center_x = (np.max(x) + np.min(x)) / 2
     center_y = (np.max(y) + np.min(y)) / 2
-    
-    # Dilate from the center point in x and y
+
+    # Dilate from center in XY
     x_dilated = center_x + (x - center_x) * scale_factor
     y_dilated = center_y + (y - center_y) * scale_factor
-    
-    # For z, dilate from the minimum z value and then add the translation
+
+    # Dilate Z from min Z
     min_z = np.min(z)
     z_dilated = min_z + (z - min_z) * scale_factor
+
+    # Shift Z so lowest point is at 5 meters
+    if z_translation is None:
+        z_translation = 5.0 - np.min(z_dilated)
     
-    # Apply the vertical translation to lift the entire track
     z_dilated = z_dilated + z_translation
-    
-    # Print the elevation statistics
+
+    # Print elevation stats
     print(f"Rollercoaster elevation statistics:")
     print(f"- Minimum height: {np.min(z_dilated):.2f} units")
     print(f"- Maximum height: {np.max(z_dilated):.2f} units")
@@ -1618,6 +1625,64 @@ def fix_specific_points(x, y, z, problem_indices, window_size=30):
             continue
     
     return x_fixed, y_fixed, z_fixed
+
+def calculate_arc_length(x, y, z):
+    """
+    Calculate the total arc length (line integral) of the rollercoaster track.
+    
+    Parameters:
+    - x, y, z: Track coordinates
+    
+    Returns:
+    - Total arc length
+    """
+    import numpy as np
+    
+    total_length = 0.0
+    
+    # Sum the length of each segment
+    for i in range(1, len(x)):
+        dx = x[i] - x[i-1]
+        dy = y[i] - y[i-1]
+        dz = z[i] - z[i-1]
+        segment_length = np.sqrt(dx*dx + dy*dy + dz*dz)
+        total_length += segment_length
+    
+    return total_length
+
+def calculate_average_length(x, y, z):
+    """
+    Calculate the average length of the rollercoaster by dividing the total arc length
+    by the horizontal distance from end to end.
+    
+    Parameters:
+    - x, y, z: Track coordinates
+    
+    Returns:
+    - Average length ratio
+    - Dictionary with detailed information
+    """
+    import numpy as np
+    
+    # Calculate arc length
+    arc_length = calculate_arc_length(x, y, z)
+    
+    # Calculate horizontal extent (maximum distance in any direction)
+    x_extent = np.max(x) - np.min(x)
+    y_extent = np.max(y) - np.min(y)
+    horizontal_extent = np.sqrt(x_extent**2 + y_extent**2)
+    
+    # Calculate the average length ratio
+    average_length = arc_length / horizontal_extent
+    
+    # Return the average length and additional information
+    return average_length, {
+        "arc_length": arc_length,
+        "horizontal_extent": horizontal_extent,
+        "x_extent": x_extent,
+        "y_extent": y_extent,
+        "z_range": np.max(z) - np.min(z)
+    }
 
 # Helper function to visualize the connection for debugging
 def visualize_connection_points(x_rc, y_rc, z_rc, x_pw, y_pw, z_pw):
@@ -1814,7 +1879,7 @@ def check_continuity_and_differentiability(x, y, z, tolerance=1e-1, is_dilated=F
     # Adjust continuity tolerance based on average point spacing
     # Use a much higher tolerance for the complete circuit
     # If the track is dilated, scale the tolerance even more
-    scale_factor = 4.0 if is_dilated else 1.0
+    scale_factor = 3.0 if is_dilated else 1.0
     continuity_tolerance = max(
         tolerance * 25 * scale_factor,
         avg_distance * 8 + std_distance * 3
@@ -2027,6 +2092,60 @@ def visualize_continuity_issues(x, y, z, results):
     plt.tight_layout()
     return fig, ax
 
+def calculate_pillar_positions(x, y, z):
+    """
+    Determine pillar positions based on curvature.
+    Pillars are placed more densely in curvy areas.
+    """
+    import numpy as np
+    
+    pillar_positions = []
+    pillar_heights = []
+    total_length = 0
+    last_pillar_index = 0
+    i = 1
+    
+    while i < len(x) - 1:
+        # Get three points to calculate curvature
+        p0 = np.array([x[i - 1], y[i - 1], z[i - 1]])
+        p1 = np.array([x[i], y[i], z[i]])
+        p2 = np.array([x[i + 1], y[i + 1], z[i + 1]])
+        
+        v1 = p1 - p0
+        v2 = p2 - p1
+        
+        norm_v1 = np.linalg.norm(v1)
+        norm_v2 = np.linalg.norm(v2)
+        
+        if norm_v1 == 0 or norm_v2 == 0:
+            i += 1
+            continue
+        
+        dot = np.dot(v1, v2) / (norm_v1 * norm_v2)
+        angle = np.arccos(np.clip(dot, -1.0, 1.0))  # in radians
+        
+        spacing = 20 if angle < np.pi / 4 else 15
+        
+        distance = 0
+        while i < len(x) and distance < spacing:
+            dx = x[i] - x[last_pillar_index]
+            dy = y[i] - y[last_pillar_index]
+            dz = z[i] - z[last_pillar_index]
+            distance = np.sqrt(dx*dx + dy*dy + dz*dz)
+            i += 1
+        
+        if i < len(x):
+            pillar_positions.append((x[i], y[i], 0, z[i]))  # base to top
+            pillar_heights.append(z[i])
+            total_length += z[i]
+            last_pillar_index = i
+    
+    print(f"Total pillars placed: {len(pillar_positions)}")
+    print(f"Average pillar height: {np.mean(pillar_heights):.2f}")
+    print(f"Combined pillar length: {total_length:.2f}")
+    
+    return pillar_positions
+
 if __name__ == "__main__":
     # Create the integrated rollercoaster
     print("Creating integrated rollercoaster...")
@@ -2117,14 +2236,14 @@ if __name__ == "__main__":
                             y_fixed[idx + offset] = (1-weight) * y_fixed[idx + offset] + weight * y_avg
                             z_fixed[idx + offset] = (1-weight) * z_fixed[idx + offset] + weight * z_avg
     
-    # Dilate the rollercoaster by 4x
-    print("Dilating rollercoaster by 4x...")
-    x_final, y_final, z_final = dilate_rollercoaster(x_fixed, y_fixed, z_fixed, scale_factor=4.0)
+    # Dilate the rollercoaster by 4x and translate up 115 units
+    print("Dilating rollercoaster by 3x and translating up to set base at 5 units...")
+    x_final, y_final, z_final = dilate_rollercoaster(x_fixed, y_fixed, z_fixed, scale_factor=3.0, z_translation=5.0)
     
     # Plot the final dilated circuit
     print("Plotting dilated circuit rollercoaster...")
     fig, ax = plot_rollercoaster(
-        x_final, y_final, z_final, "4x Dilated Rollercoaster Circuit"
+        x_final, y_final, z_final, "DinoCoaster"
     )
     
     # Final check on the dilated track - use the is_dilated flag
@@ -2135,12 +2254,48 @@ if __name__ == "__main__":
     report = generate_validation_report(results)
     print(report)
     
+    # Perform analysis calculations
+    print("\nPerforming rollercoaster analysis...")
+    arc_length = calculate_arc_length(x_final, y_final, z_final)
+    avg_length, details = calculate_average_length(x_final, y_final, z_final)
+    
+    # Print analysis results
+    print("\n=== ROLLERCOASTER ANALYSIS ===")
+    print(f"Total arc length: {arc_length:.2f} units")
+    print(f"Horizontal extent: {details['horizontal_extent']:.2f} units")
+    print(f"Average length ratio: {avg_length:.2f}")
+    print(f"X extent: {details['x_extent']:.2f} units")
+    print(f"Y extent: {details['y_extent']:.2f} units")
+    print(f"Z range: {details['z_range']:.2f} units")
+    
     # Visualize any remaining issues
     if not (results["is_continuous"] and results["is_differentiable"]):
         print("Visualizing remaining issues...")
         issue_fig, issue_ax = visualize_continuity_issues(x_final, y_final, z_final, results)
         plt.figure(issue_fig.number)
     else:
-        print("SUCCESS! The rollercoaster is now perfectly smooth and differentiable!")
+        print("\nSUCCESS! The rollercoaster is now perfectly smooth and differentiable!")
+        from simulation import run_simulation
+        run_simulation(x_final, y_final, z_final)
     
     plt.show()
+
+# -------- Minimalist Coaster-Only Plot -------- #
+def plot_minimalist_rollercoaster(x, y, z):
+    """
+    Plot the rollercoaster with no axes, grid, or pillars.
+    Just the line in space.
+    """
+    fig = plt.figure(figsize=(10, 6))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot(x, y, z, color='forestgreen', linewidth=2)
+
+    # Remove all visual clutter
+    ax.set_axis_off()
+    ax.grid(False)
+    plt.tight_layout()
+    plt.show()
+
+# Call this after generating and transforming the final coordinates
+plot_minimalist_rollercoaster(x_final, y_final, z_final)
+
